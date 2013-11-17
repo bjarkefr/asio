@@ -1,3 +1,7 @@
+//#include <exception> // for std::bad_alloc
+//#include <new>
+//#include <cstdlib> // for malloc() and free()
+
 #include <iostream>
 #include <sstream>
 #include <memory>
@@ -5,6 +9,7 @@
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/function.hpp>
 
 using namespace std;
 using namespace boost;
@@ -13,14 +18,16 @@ using namespace boost::asio;
 class session
 {
 public:
-	typedef void (*completion_handler)(const boost::system::error_code& error);
+	typedef void (completion_handler)(const boost::system::error_code& error, size_t size);
 
 	session(io_service& service, unique_ptr<ip::tcp::socket> socket)
 		:service(service), socket(move(socket)) {}
 
-	void read(boost::array<char, 1024>* buffer, int length, const completion_handler& done)
+	void read(boost::array<char, 1024>* buffer, size_t length, completion_handler done)
 	{
-		boost::asio::async_read(*socket, boost::asio::buffer(*buffer, length), [&](const boost::system::error_code& error, std::size_t size) { done(error); });
+		boost::asio::async_read(*socket, boost::asio::buffer(*buffer, length), [&](const boost::system::error_code& error, std::size_t size) {
+			done(error, size);
+		});
 	}
 
 private:
@@ -52,14 +59,14 @@ private:
 class listener
 {
 public:
-	typedef void (*new_session_handler)(session* new_session);
+	typedef void (new_session_handler)(session* new_session);
 
 	listener(boost::asio::io_service& service, short port)
     	:service(service), acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), port)) {}
 
-	void listen(const new_session_handler* handler)
+	void set_new_session_handler(boost::function<void(session* new_session)>& handler)
 	{
-		this->handler = handler;
+		this->handler = &handler;
 		hookup_async_accept();
 	}
 
@@ -89,7 +96,7 @@ private:
 private:
 	io_service& service;
 	ip::tcp::acceptor acceptor;
-	const new_session_handler* handler;
+	boost::function<void(session* new_session)>* handler;
 };
 
 
@@ -154,32 +161,76 @@ private:
 	boost::array<char, 1024> recv_buffer;
 };
 
+
+//int call_b(boost::function<int(int)> fnc, int x)
+//{
+//	return fnc(x);
+//}
+
+//void* operator new (size_t size)
+//{
+//	cout << "Alloc request " << size << endl;
+//	void *p=malloc(size);
+//	if (p==0) // did malloc succeed?
+//		throw std::bad_alloc(); // ANSI/ISO compliant behavior
+//	return p;
+//}
+//
+//void operator delete (void *p) noexcept (true)
+//{
+//	free(p);
+//}
+
 int main()
 {
-	stringstream ss;
+	int h = 3;
 
- 	ss << "Hahahahhahah";
+	boost::function<int(int)> add_h = [&](int x) { return x + h; };
 
- 	string s = ss.str();
+	//function<int(int)> kryl = add_h;
 
- 	cout << s << endl;
+	cout << sizeof(add_h) << endl;
 
-
-	//udp::resolver resolver(io_service);
-    //udp::resolver::query query(udp::v4(), peer, "8080");
-    //this->peer = *resolver.resolve(query);
+	//cout << call_b(add_h, 2) << endl;
 
 	io_service service;
-	udp_transceiver transceiver(service);
+	listener listen(service, 555);
 
-	cout << "Server running:" << endl;
+	//boost::function<void(session*)> session_h = [](session* nsession) {};
 
-	transceiver.run();
+	//listen.set_new_session_handler(&session_h);
+	listen.set_new_session_handler(boost::function<void(session*)>([&](session *nsession) { }));
 
-	cout << "Server done...?" << endl;
-
-	char dummy;
-	cin >> dummy;
+				//[](session* nsession) {
+//		cout << "New session accepted!" << endl;
+//		boost::array<char, 1024> chars;
+//		nsession->read(&chars, chars.size() - 1, [&chars](const boost::system::error_code& error, size_t size) {
+//			chars.back() = 0;
+//			cout << "Received data (length" << size << ")" << endl;
+//			cout << chars.elems << endl;
+//		});
+	//});
+//
+//	service.run();
+//
+//	stringstream ss;
+//
+// 	ss << "Hahahahhahah";
+//
+// 	string s = ss.str();
+//
+// 	cout << s << endl;
+//
+//	udp_transceiver transceiver(service);
+//
+//	cout << "Server running:" << endl;
+//
+//	transceiver.run();
+//
+//	cout << "Server done...?" << endl;
+//
+//	char dummy;
+//	cin >> dummy;
 
 	return 0;
 }

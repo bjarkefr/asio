@@ -24,7 +24,7 @@ env = Environment()
 pre_libs = [];
 if env['PLATFORM'] == 'win32':
 	env = Environment(tools = ['mingw']);
-	pre_libs = ['ws2_32', 'mingw32'];
+	pre_libs = ['mswsock', 'ws2_32', 'mingw32']; # it seems '-lmswsock' is only needed for TCP to make things easier...!!!!!!????
 generate(env);
 
 #PrecompAction = SCons.Action.Action('${CXX} ${CCFLAGS} ${SOURCES} -o ${TARGET}')
