@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
@@ -18,14 +19,14 @@ using namespace boost::asio;
 class session
 {
 public:
-	typedef void (completion_handler)(const boost::system::error_code& error, size_t size);
+	//typedef void (completion_handler)(const boost::system::error_code& error, size_t size);
 
 	session(io_service& service, unique_ptr<ip::tcp::socket> socket)
 		:service(service), socket(move(socket)) {}
 
-	void read(boost::array<char, 1024>* buffer, size_t length, completion_handler done)
+	void read(boost::asio::streambuf* buffer, size_t length, boost::function<void(const boost::system::error_code& error, size_t size)> done)
 	{
-		boost::asio::async_read(*socket, boost::asio::buffer(*buffer, length), [&](const boost::system::error_code& error, std::size_t size) {
+		boost::asio::async_read(*socket, boost::asio::buffer(buffer->prepare(length)), [done](const boost::system::error_code& error, std::size_t size) {
 			done(error, size);
 		});
 	}
@@ -59,14 +60,14 @@ private:
 class listener
 {
 public:
-	typedef void (new_session_handler)(session* new_session);
+	//typedef void (new_session_handler)(session* new_session);
 
 	listener(boost::asio::io_service& service, short port)
     	:service(service), acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), port)) {}
 
-	void set_new_session_handler(boost::function<void(session* new_session)>& handler)
+	void set_new_session_handler(boost::function<void(session* new_session)> handler)
 	{
-		this->handler = &handler;
+		this->handler = handler;
 		hookup_async_accept();
 	}
 
@@ -88,15 +89,15 @@ private:
 			return;
 		}
 
-		(*handler)(new session(service, unique_ptr<ip::tcp::socket>(socket)));
+		handler(new session(service, unique_ptr<ip::tcp::socket>(socket)));
 
-		hookup_async_accept();
+		//hookup_async_accept();
 	}
 
 private:
 	io_service& service;
 	ip::tcp::acceptor acceptor;
-	boost::function<void(session* new_session)>* handler;
+	boost::function<void(session* new_session)> handler;
 };
 
 
@@ -193,25 +194,41 @@ int main()
 
 	//cout << call_b(add_h, 2) << endl;
 
+
 	io_service service;
 	listener listen(service, 555);
 
 	//boost::function<void(session*)> session_h = [](session* nsession) {};
 
 	//listen.set_new_session_handler(&session_h);
-	listen.set_new_session_handler(boost::function<void(session*)>([&](session *nsession) { }));
+	//listen.set_new_session_handler(boost::function<void(session*)>([&](session *nsession) { }));
 
-				//[](session* nsession) {
-//		cout << "New session accepted!" << endl;
-//		boost::array<char, 1024> chars;
-//		nsession->read(&chars, chars.size() - 1, [&chars](const boost::system::error_code& error, size_t size) {
-//			chars.back() = 0;
-//			cout << "Received data (length" << size << ")" << endl;
-//			cout << chars.elems << endl;
-//		});
-	//});
-//
-//	service.run();
+	boost::array<char, 1024> chars;
+
+	boost::asio::streambuf buffer;
+	//boost::asio::buffer bf; //(chars, 1024); //b.prepare(1024)
+	//auto bf = boost::asio::buffer(b.prepare(1024));
+
+	listen.set_new_session_handler([&buffer](session* nsession) {
+		cout << "New session accepted!" << endl;
+		nsession->read(&buffer, 80, [&buffer](const boost::system::error_code& error, size_t size) {
+			cout << "Received data (length: " << size << ")" << endl;
+			//char data[81];
+			//data[80] = 0;
+			//buffer..sgetn(data, 80);
+			//std::istream s(&buffer);
+			auto whatever = buffer.data();
+			for(auto c = whatever.begin(); c != whatever.end(); ++c)
+				cout << *c;
+			//cout << "data: " <<  << endl;
+
+			//chars.back() = 0;
+			//cout << chars.elems << endl;
+		});
+	});
+
+	service.run();
+
 //
 //	stringstream ss;
 //
