@@ -1,0 +1,9 @@
+message SessionRequest
+{
+	required fixed32 Magick = 1;
+}
+
+message SessionResponse
+{
+	required fixed32 SessionID = 1;
+}

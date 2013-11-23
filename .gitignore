@@ -10,3 +10,5 @@ proto/
 .sconsign.dblite
 *.exe
 stdout.txt
+*.pb.h
+*.pb.cc

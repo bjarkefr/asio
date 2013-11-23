@@ -45,7 +45,7 @@ env['CCFLAGS']='-g3 -Wall -std=c++11 -pedantic -I/usr/local/include -gstabs'
 
 #precompiled = env.Gch('precompiled/all.h.gch', 'precompiled/all.h')
 
-server_source = Glob('src/server/*.cc')# + Glob('src/Utils/Algorithm/*.cc')
+server_source = Glob('src/server/*.cc') + Glob('src/contract/*.proto')
 client_source = Glob('src/client/*.cc')
 
 server_program = env.Program('server',
