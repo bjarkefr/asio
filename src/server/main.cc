@@ -122,14 +122,14 @@ public:
 		return asio::buffer((const void*)buffer, used_size);
 	}
 
-//	asio::mutable_buffer GetAsioBuffer()
+//	asio::mutable_buffers_1 GetAsioBuffer()
 //	{
 //		return asio::buffer(buffer, used_size);
 //	}
 
 	asio::mutable_buffers_1 ResetAndGetAsioBuffer(size_t size)
 	{
-		BOOST_ASSERT(size < allocated_size);
+		BOOST_ASSERT(size <= allocated_size);
 		used_size = size;
 		return asio::buffer(buffer, used_size);
 	}
@@ -150,16 +150,19 @@ public:
 	}
 };
 
+
+// how about a max size concept instead?
 class TCPTransceiver
 {
 	io_service& service;
 	unique_ptr<ip::tcp::socket> socket;
+	size_t receiveLimit;
 
 public:
-	TCPTransceiver(io_service& service, unique_ptr<ip::tcp::socket> socket)
-		:service(service), socket(move(socket)) {}
+	TCPTransceiver(io_service& service, unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536)
+		:service(service), socket(move(socket)), receiveLimit(receiveLimit) {}
 
-	void Send(RawBuffer& buffer, boost::function<void()> done)
+	void Send(const RawBuffer& buffer, boost::function<void()> done)
 	{
 		auto messageSizeToken = new SizeTToken(buffer.GetUsedSize());
 		asio::async_write(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken, &buffer](const system::error_code& error, size_t size) {
@@ -174,23 +177,25 @@ public:
 		});
 	}
 
-	void Receive(RawBuffer& buffer, boost::function<void()> done)
+	void Receive(boost::function<void(unique_ptr<RawBuffer> buffer)> done)
 	{
 		auto messageSizeToken = new SizeTToken();
-		asio::async_read(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken, &buffer](const system::error_code& error, size_t size) {
+		asio::async_read(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken](const system::error_code& error, size_t size) {
 			auto wrapped_token = unique_ptr<SizeTToken>(messageSizeToken);
 			if(error != 0)
 				throw "Error receiving message header";
 
 			size_t messageSize = wrapped_token->GetValue();
-			if(messageSize > buffer.GetSize())
+			if(messageSize > receiveLimit)
 				throw "Error receiving message, message too large for buffer";
 
-			asio::async_read(*socket, buffer.ResetAndGetAsioBuffer(messageSize), [done](const system::error_code& error, size_t size) {
+			auto buffer = new RawBuffer(messageSize);
+			asio::async_read(*socket, buffer->ResetAndGetAsioBuffer(messageSize), [done, buffer](const system::error_code& error, size_t size) {
+				//auto wrapped_buffer = unique_ptr<RawBuffer>(buffer);
 				if(error != 0)
 					throw "Error receiving message header";
 
-				done();
+				done(unique_ptr<RawBuffer>(buffer));
 			});
 		});
 	}
