@@ -17,6 +17,8 @@
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
 #include <boost/asio/buffer.hpp>
+//#include <boost/interprocess/smart_ptr/unique_ptr.hpp>
+//#include <boost/move/algorithm.hpp> // TODO: try:: boost::move!
 #include <boost/function.hpp>
 #include <boost/assert.hpp>
 #include "../contract/SessionRequest.pb.h"
@@ -28,6 +30,7 @@
 
 using namespace std;
 using namespace boost;
+//using namespace boost::interprocess;
 using namespace boost::asio;
 
 class udp_transceiver
@@ -42,11 +45,6 @@ public:
 	        boost::bind(&udp_transceiver::handle_receive_from, this,
 	        	boost::asio::placeholders::error,
 	        	boost::asio::placeholders::bytes_transferred));
-	}
-
-	void run()
-	{
-		service.run();
 	}
 
 	~udp_transceiver()
@@ -144,6 +142,11 @@ public:
 		return used_size;
 	}
 
+	string CopyToString() const
+	{
+		return std::string((char*)buffer, used_size);
+	}
+
 	~RawBuffer()
 	{
 		::operator delete(buffer);
@@ -155,12 +158,12 @@ public:
 class TCPTransceiver
 {
 	io_service& service;
-	unique_ptr<ip::tcp::socket> socket;
+	std::unique_ptr<ip::tcp::socket> socket;
 	size_t receiveLimit;
 
 public:
-	TCPTransceiver(io_service& service, unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536)
-		:service(service), socket(move(socket)), receiveLimit(receiveLimit) {}
+	TCPTransceiver(io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536)
+		:service(service), socket(std::move(socket)), receiveLimit(receiveLimit) {}
 
 	void Send(const RawBuffer& buffer, boost::function<void()> done)
 	{
@@ -177,11 +180,11 @@ public:
 		});
 	}
 
-	void Receive(boost::function<void(unique_ptr<RawBuffer> buffer)> done)
+	void Receive(std::function<void(std::unique_ptr<RawBuffer>)> done) // Would have liked to use the more efficient boost::function, but it is seems incompatible (any attempt at using the two together seems to result in the compiler complaining about use of deleted constructors...?) with std::unique_ptr and boost::unique_ptr is annoying to use because it has no default deleter.
 	{
 		auto messageSizeToken = new SizeTToken();
 		asio::async_read(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken](const system::error_code& error, size_t size) {
-			auto wrapped_token = unique_ptr<SizeTToken>(messageSizeToken);
+			auto wrapped_token = std::unique_ptr<SizeTToken>(messageSizeToken);
 			if(error != 0)
 				throw "Error receiving message header";
 
@@ -191,11 +194,11 @@ public:
 
 			auto buffer = new RawBuffer(messageSize);
 			asio::async_read(*socket, buffer->ResetAndGetAsioBuffer(messageSize), [done, buffer](const system::error_code& error, size_t size) {
-				//auto wrapped_buffer = unique_ptr<RawBuffer>(buffer);
+				auto wrapped_buffer = std::unique_ptr<RawBuffer>(buffer);
 				if(error != 0)
 					throw "Error receiving message header";
 
-				done(unique_ptr<RawBuffer>(buffer));
+				done(std::move(wrapped_buffer));
 			});
 		});
 	}
@@ -286,48 +289,50 @@ public:
 //	boost::array<char, CHAT_BUFF_SIZE> chatBuffer;
 //};
 //
-//class listener
-//{
-//public:
-//	//typedef void (new_session_handler)(session* new_session);
-//
-//	listener(boost::asio::io_service& service, short port)
-//    	:service(service), acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), port)) {}
-//
-//	void set_new_session_handler(boost::function<void(session* new_session)> handler)
-//	{
-//		this->handler = handler;
-//		hookup_async_accept();
-//	}
-//
-//private:
-//	void hookup_async_accept()
-//	{
-//		auto socket = new ip::tcp::socket(service);
-//		acceptor.async_accept(*socket,
-//			boost::bind(&listener::handle_accept, this, socket,
-//			boost::asio::placeholders::error));
-//	}
-//
-//	void handle_accept(ip::tcp::socket* socket, const boost::system::error_code& error)
-//	{
-//		if(error)
-//		{
-//	    	cerr << "Error accepting connection " + error.message() << endl;
-//			hookup_async_accept();
-//			return;
-//		}
-//
-//		handler(new session(1, service, unique_ptr<ip::tcp::socket>(socket)));
-//
-//		//hookup_async_accept();
-//	}
-//
-//private:
-//	io_service& service;
-//	ip::tcp::acceptor acceptor;
-//	boost::function<void(session* new_session)> handler;
-//};
+class Listener
+{
+public:
+	Listener(boost::asio::io_service& service, short port)
+    	:service(service), acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), port)) {}
+
+	void Listen(std::function<void(std::unique_ptr<TCPTransceiver>)> handler)
+	{
+		this->handler = handler;
+		hookupAccept();
+	}
+
+private:
+	void hookupAccept()
+	{
+		auto socket = new ip::tcp::socket(service);
+		acceptor.async_accept(*socket,
+			boost::bind(&Listener::handleAccept, this, socket,
+			boost::asio::placeholders::error));
+	}
+
+	void handleAccept(ip::tcp::socket* socket, const boost::system::error_code& error)
+	{
+		auto wrapped_socket = std::unique_ptr<ip::tcp::socket>(socket);
+		if(error)
+		{
+			//TODO: Should the socket be freed here?
+	    	cerr << "Error accepting connection " + error.message() << endl;
+			hookupAccept();
+			return;
+		}
+
+		handler(unique_ptr<TCPTransceiver>(new TCPTransceiver(service, std::move(wrapped_socket))));
+				//new session(1, service, unique_ptr<ip::tcp::socket>(socket)));
+
+		//hookup_async_accept();
+	}
+
+private:
+	io_service& service;
+	ip::tcp::acceptor acceptor;
+	std::function<void(std::unique_ptr<TCPTransceiver>)> handler;
+	//boost::function<void(session* new_session)> handler;
+};
 
 //int call_b(boost::function<int(int)> fnc, int x)
 //{
@@ -361,17 +366,36 @@ int main()
 	//cout << call_b(add_h, 2) << endl;
 
 
-//	io_service service;
-//	listener listen(service, 555);
-//
-//	listen.set_new_session_handler([](session* nsession) {
+
+
+	io_service service;
+	//TCPTransceiver transceiver();
+
+	//io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536
+
+
+	Listener listen(service, 555);
+
+	listen.Listen([](std::unique_ptr<TCPTransceiver> transceiver) {
+		cout << "New session accepted!" << endl;
+		transceiver->Receive([](std::unique_ptr<RawBuffer> buffer) {
+			cout << "Got data: " << buffer->CopyToString() << endl;
+			//delete unmanaged_transceiver;
+		});
+
+		TCPTransceiver* unmanaged_transceiver = transceiver.release();
+	});
+
+//	listen.Listen([](session* nsession) {
 //		cout << "New session accepted!" << endl;
 //		nsession->Setup([nsession]() {
 //			cout << "Session set up. (id: " << nsession->GetId() << ")" << endl;
 //		});
 //	});
 //
-//	service.run();
+	service.run();
+
+
 
 //	udp_transceiver transceiver(service);
 //
