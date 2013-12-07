@@ -288,7 +288,7 @@ public:
 //	unique_ptr<ip::tcp::socket> socket;
 //	boost::array<char, CHAT_BUFF_SIZE> chatBuffer;
 //};
-//
+
 class Listener
 {
 public:
@@ -355,6 +355,8 @@ private:
 
 int main()
 {
+	try {
+
 	int h = 3;
 
 	boost::function<int(int)> add_h = [&](int x) { return x + h; };
@@ -365,25 +367,20 @@ int main()
 
 	//cout << call_b(add_h, 2) << endl;
 
-
-
-
 	io_service service;
 	//TCPTransceiver transceiver();
-
 	//io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536
-
 
 	Listener listen(service, 555);
 
 	listen.Listen([](std::unique_ptr<TCPTransceiver> transceiver) {
 		cout << "New session accepted!" << endl;
-		transceiver->Receive([](std::unique_ptr<RawBuffer> buffer) {
-			cout << "Got data: " << buffer->CopyToString() << endl;
-			//delete unmanaged_transceiver;
-		});
 
-		TCPTransceiver* unmanaged_transceiver = transceiver.release();
+		auto transceiverP = transceiver.release();
+		transceiverP->Receive([transceiverP](std::unique_ptr<RawBuffer> buffer) {
+			delete transceiverP;
+			cout << "Got data: " << buffer->CopyToString() << endl;
+		});
 	});
 
 //	listen.Listen([](session* nsession) {
@@ -395,8 +392,6 @@ int main()
 //
 	service.run();
 
-
-
 //	udp_transceiver transceiver(service);
 //
 //	cout << "Server running:" << endl;
@@ -407,7 +402,11 @@ int main()
 //
 //	char dummy;
 //	cin >> dummy;
-
+	}
+	catch(const char* s)
+	{
+		cout << s << endl;
+	}
 	return 0;
 }
 
