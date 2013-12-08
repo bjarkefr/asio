@@ -1,6 +1,7 @@
 #include "NetUtils.h"
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
+#include <cstring>
 
 namespace NetUtils
 {
@@ -74,6 +75,14 @@ namespace NetUtils
 			return asio::buffer((const void*) &data, sizeof(data));
 		}
 	};
+
+	RawBuffer::RawBuffer(const char* data)
+	{
+		allocated_size = std::strlen(data);
+		used_size = allocated_size;
+		buffer = ::operator new(allocated_size);
+		std::strcpy((char*)buffer, data);
+	}
 
 	RawBuffer::RawBuffer(size_t size)
 		:allocated_size(size), used_size(0)
@@ -280,5 +289,55 @@ namespace NetUtils
 				//new session(1, service, unique_ptr<ip::tcp::socket>(socket)));
 
 		//hookup_async_accept();
+	}
+
+	Connector::Connector(boost::asio::io_service& service)
+		:service(service) {}
+
+	const string format_endpoint(const ip::tcp::endpoint& ep)
+	{
+		stringstream ss;
+		const ip::address& ip = ep.address();
+		if(ip.is_v4())
+		{
+			ss << ip.to_string() << ':' << ep.port();
+			return ss.str();
+		}
+		else if (ip.is_v6())
+		{
+			ss << "[" << ip.to_string() << "]:" << ep.port();
+			return ss.str();
+		}
+
+		throw "Unknown address type!?";
+	}
+
+	void Connector::Connect(const string& server, const string& port, std::function<void(std::unique_ptr<TCPTransceiver>)> handler)
+	{
+		auto resolver = new ip::tcp::resolver(service);
+		resolver->async_resolve(ip::tcp::resolver::query(server, port), [this, handler, resolver](const boost::system::error_code& err, ip::tcp::resolver::iterator endpoint_iterator) { // for some reason the query does not need to be kept alive during the async processing
+			auto uResolver = std::unique_ptr<ip::tcp::resolver>(resolver);
+			if(err)
+				throw "Error resolving hostname: " + err.message();
+
+			cout << "Server resolved to ";
+			auto end = ip::tcp::resolver::iterator();
+			for(ip::tcp::resolver::iterator epi = endpoint_iterator; epi != end; ++epi)
+				cout << format_endpoint(*epi) << ", ";
+			cout << endl;
+
+			auto socket = new ip::tcp::socket(service);
+			async_connect(*socket, endpoint_iterator, [this, handler, socket](const boost::system::error_code& err, ip::tcp::resolver::iterator endpoint_iterator) {
+				auto uSocket = std::unique_ptr<ip::tcp::socket>(socket);
+				if(err)
+					throw "Error connecting " + err.message();
+
+				cout << "Connected to " << format_endpoint(*endpoint_iterator) << endl;
+
+				handler(std::unique_ptr<TCPTransceiver>(new TCPTransceiver(service, std::move(uSocket))));
+			});
+		});
+
+		//auto socket = new ip::tcp::socket(service);
 	}
 }

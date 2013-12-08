@@ -57,58 +57,38 @@ using namespace NetUtils;
 int main()
 {
 	try {
+		io_service service;
+		Listener listen(service, 555);
 
-	int h = 3;
+		listen.Listen([](std::unique_ptr<TCPTransceiver> transceiver) {
+			cout << "New session accepted!" << endl;
 
-	boost::function<int(int)> add_h = [&](int x) { return x + h; };
+			auto transceiverP = transceiver.release();
+			transceiverP->Receive([transceiverP](std::unique_ptr<RawBuffer> buffer) {
+				cout << "Got data: " << buffer->CopyToString() << endl;
 
-	//function<int(int)> kryl = add_h;
-
-	cout << sizeof(add_h) << endl;
-
-	//cout << call_b(add_h, 2) << endl;
-
-
-	io_service service;
-	//TCPTransceiver transceiver();
-	//io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536
-
-	Listener listen(service, 555);
-
-	listen.Listen([](std::unique_ptr<TCPTransceiver> transceiver) {
-		cout << "New session accepted!" << endl;
-
-		auto transceiverP = transceiver.release();
-		transceiverP->Receive([transceiverP](std::unique_ptr<RawBuffer> buffer) {
-			cout << "Got data: " << buffer->CopyToString() << endl;
-			delete transceiverP;
+				delete transceiverP;
+			});
 		});
-	});
 
-//	listen.Listen([](session* nsession) {
-//		cout << "New session accepted!" << endl;
-//		nsession->Setup([nsession]() {
-//			cout << "Session set up. (id: " << nsession->GetId() << ")" << endl;
-//		});
-//	});
-//
-	service.run();
+	//	listen.Listen([](session* nsession) {
+	//		cout << "New session accepted!" << endl;
+	//		nsession->Setup([nsession]() {
+	//			cout << "Session set up. (id: " << nsession->GetId() << ")" << endl;
+	//		});
+	//	});
+	//
+		service.run();
 
-//	udp_transceiver transceiver(service);
-//
-//	cout << "Server running:" << endl;
-//
-//	transceiver.run();
-//
-//	cout << "Server done...?" << endl;
-//
-//	char dummy;
-//	cin >> dummy;
+	//	udp_transceiver transceiver(service);
 	}
 	catch(const char* s)
 	{
 		cout << s << endl;
 	}
+	catch(const string& s)
+	{
+		cout << s << endl;
+	}
 	return 0;
 }
-

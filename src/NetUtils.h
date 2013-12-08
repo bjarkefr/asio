@@ -16,6 +16,7 @@ namespace NetUtils
 	{
 	public:
 		explicit RawBuffer(size_t size);
+		explicit RawBuffer(const char* data);
 		asio::const_buffers_1 GetAsioBuffer() const;
 		asio::mutable_buffers_1 ResetAndGetAsioBuffer(size_t size);
 		size_t GetSize() const;
@@ -56,6 +57,15 @@ namespace NetUtils
 		ip::tcp::acceptor acceptor;
 		std::function<void(std::unique_ptr<TCPTransceiver>)> handler;
 		//boost::function<void(session* new_session)> handler;
+	};
+
+	class Connector
+	{
+	public:
+		Connector(boost::asio::io_service& service);
+		void Connect(const string& server, const string& port, std::function<void(std::unique_ptr<TCPTransceiver>)> handler);
+	private:
+		io_service& service;
 	};
 }
 #endif
