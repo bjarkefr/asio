@@ -45,8 +45,13 @@ env['CCFLAGS']='-g3 -Wall -std=c++11 -pedantic -I/usr/local/include -gstabs'
 
 #precompiled = env.Gch('precompiled/all.h.gch', 'precompiled/all.h')
 
-server_source = Glob('src/server/*.cc') + Glob('src/contract/*.proto')
-client_source = Glob('src/client/*.cc')
+common_objects = env.Object(
+	Glob('src/contract/*.proto') + Glob('src/*.cc'),
+    LIBS=pre_libs + ['boost_system', 'protobuf', 'pthread'],
+	CCFLAGS='${CCFLAGS} -D_WIN32_WINNT=0x0601')
+
+server_source = Glob('src/server/*.cc') + common_objects 
+client_source = Glob('src/client/*.cc') + common_objects
 
 server_program = env.Program('server',
     server_source,
