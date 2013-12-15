@@ -35,8 +35,8 @@ namespace NetUtils
 	{
 	public:
 		TCPTransceiver(io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit = 65536);
-		void Send(const RawBuffer& buffer, boost::function<void()> done);
-		void Receive(std::function<void(std::unique_ptr<RawBuffer>)> done);
+		void Send(const RawBuffer& buffer, boost::function<void(const system::error_code&)> done);
+		void Receive(std::function<void(const system::error_code&, std::unique_ptr<RawBuffer>)> done);
 
 	private:
 		io_service& service;

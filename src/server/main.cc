@@ -64,7 +64,7 @@ int main()
 			cout << "New session accepted!" << endl;
 
 			auto transceiverP = transceiver.release();
-			transceiverP->Receive([transceiverP](std::unique_ptr<RawBuffer> buffer) {
+			transceiverP->Receive([transceiverP](const system::error_code& error, std::unique_ptr<RawBuffer> buffer) {
 				cout << "Got data: " << buffer->CopyToString() << endl;
 
 				delete transceiverP;

@@ -130,44 +130,42 @@ namespace NetUtils
 	RawBuffer::RawBuffer(const RawBuffer& src)
 		:buffer(0),allocated_size(0),used_size(0) {}
 
-
 	TCPTransceiver::TCPTransceiver(io_service& service, std::unique_ptr<ip::tcp::socket> socket, size_t receiveLimit)
 		:service(service), socket(std::move(socket)), receiveLimit(receiveLimit) {}
 
-	void TCPTransceiver::Send(const RawBuffer& buffer, boost::function<void()> done)
+	void TCPTransceiver::Send(const RawBuffer& buffer, boost::function<void(const system::error_code&)> done)
 	{
 		auto messageSizeToken = new SizeTToken(buffer.GetUsedSize());
 		asio::async_write(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken, &buffer](const system::error_code& error, size_t size) {
 			delete messageSizeToken;
 
 			if(error != 0)
-				throw "Error sending message header";
+				return done(error);
 
 			asio::async_write(*socket, buffer.GetAsioBuffer(), [done](const system::error_code& error, size_t size) {
-				done();
+				done(error);
 			});
 		});
 	}
 
-	void TCPTransceiver::Receive(std::function<void(std::unique_ptr<RawBuffer>)> done) // Would have liked to use the more efficient boost::function, but it is seems incompatible (any attempt at using the two together seems to result in the compiler complaining about use of deleted constructors...?) with std::unique_ptr and boost::unique_ptr is annoying to use because it has no default deleter.
+	void TCPTransceiver::Receive(std::function<void(const system::error_code&, std::unique_ptr<RawBuffer>)> done) // Would have liked to use the more efficient boost::function, but it is seems incompatible (any attempt at using the two together seems to result in the compiler complaining about use of deleted constructors...?) with std::unique_ptr and boost::unique_ptr is annoying to use because it has no default deleter.
 	{
 		auto messageSizeToken = new SizeTToken();
 		asio::async_read(*socket, messageSizeToken->GetAsioBuffer(), [this, done, messageSizeToken](const system::error_code& error, size_t size) {
 			auto wrapped_token = std::unique_ptr<SizeTToken>(messageSizeToken);
 			if(error != 0)
-				throw "Error receiving message header";
+				return done(error, std::unique_ptr<RawBuffer>());
 
 			size_t messageSize = wrapped_token->GetValue();
 			if(messageSize > receiveLimit)
-				throw "Error receiving message, message too large for buffer";
+				return done(system::error_code(system::errc::not_enough_memory, system::errno_ecat), std::unique_ptr<RawBuffer>());
+				//throw "Error receiving message, message too large for buffer";
 
 			auto buffer = new RawBuffer(messageSize);
 			asio::async_read(*socket, buffer->ResetAndGetAsioBuffer(messageSize), [done, buffer](const system::error_code& error, size_t size) {
 				auto wrapped_buffer = std::unique_ptr<RawBuffer>(buffer);
-				if(error != 0)
-					throw "Error receiving message header";
 
-				done(std::move(wrapped_buffer));
+				done(error, std::move(wrapped_buffer));
 			});
 		});
 	}

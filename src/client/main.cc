@@ -63,7 +63,7 @@ int main()
 		connector.Connect("localhost", "555", [](std::unique_ptr<TCPTransceiver> transceiver) {
 			auto uTransceiver = transceiver.release();
 			auto buffer = new RawBuffer("This is the message!");
-			uTransceiver->Send(*buffer, [buffer]() {
+			uTransceiver->Send(*buffer, [buffer](const system::error_code& error) {
 				delete buffer;
 				//auto aBuffer = unique_ptr<RawBuffer>(buffer);
 			});
